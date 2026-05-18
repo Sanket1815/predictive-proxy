@@ -1,5 +1,3 @@
-// Package metrics exposes Prometheus telemetry and optional eBPF kernel
-// instrumentation for the predictive proxy.
 package metrics
 
 import (
@@ -9,22 +7,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Registry holds every counter, gauge, and histogram exported by the proxy.
-// All fields are safe for concurrent use after NewRegistry returns.
 type Registry struct {
-	// Hot-cache counters
 	CacheHitTotal     prometheus.Counter
 	CacheMissTotal    prometheus.Counter
 	ColdCacheHitTotal prometheus.Counter
 
-	// Prefetch counters and queue gauge
 	PrefetchQueued      prometheus.Counter
 	PrefetchDropped     prometheus.Counter
 	PrefetchHits        prometheus.Counter
 	PrefetchErrors      prometheus.Counter
 	PrefetchQueueLength prometheus.Gauge
 
-	// Per-request counters and histograms
 	RequestsTotal  *prometheus.CounterVec
 	BytesServed    prometheus.Counter
 	RequestLatency *prometheus.HistogramVec
@@ -32,8 +25,6 @@ type Registry struct {
 	reg *prometheus.Registry
 }
 
-// NewRegistry creates and registers all proxy metrics with a dedicated
-// Prometheus registry (not the global default) for isolation in tests.
 func NewRegistry() *Registry {
 	reg := prometheus.NewRegistry()
 
@@ -79,10 +70,8 @@ func NewRegistry() *Registry {
 			Help: "Total bytes written to downstream clients.",
 		}),
 		RequestLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name: "proxy_request_duration_seconds",
-			Help: "End-to-end request latency, bucketed by cache tier.",
-			// 14 buckets: 1 ms → ~8 s. Covers NVMe cold-cache latency (1–5 ms)
-			// through slow backend fetches (1–8 s) in a single histogram.
+			Name:    "proxy_request_duration_seconds",
+			Help:    "End-to-end request latency, bucketed by cache tier.",
 			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14),
 		}, []string{"cache_tier"}),
 		reg: reg,
@@ -105,9 +94,6 @@ func NewRegistry() *Registry {
 	return r
 }
 
-// Handler returns an http.Handler that serves the Prometheus metrics endpoint.
-// Mount this on a separate port from the proxy to avoid exposing metrics
-// publicly.
 func (r *Registry) Handler() http.Handler {
 	return promhttp.HandlerFor(r.reg, promhttp.HandlerOpts{Registry: r.reg})
 }

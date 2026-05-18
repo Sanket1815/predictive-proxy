@@ -1,9 +1,3 @@
-// Package main is the entrypoint for the predictive reverse proxy.
-//
-// It wires together all internal components — buffer pool, hot/cold cache,
-// velocity tracker, prefetch engine, proxy handler, and metrics — then starts
-// the HTTP servers and blocks until the process receives SIGINT or SIGTERM,
-// at which point it performs a graceful shutdown with a 30-second timeout.
 package main
 
 import (
@@ -40,20 +34,13 @@ func main() {
 		log.Fatal("config load failed", zap.String("path", *cfgPath), zap.Error(err))
 	}
 
-	// ── Buffer pool ──────────────────────────────────────────────────────────
 	bufPool := cache.NewBufferPool()
 
-	// ── Cold (NVMe) cache ────────────────────────────────────────────────────
 	coldCache, err := cache.NewColdCache(cfg.Cache.DiskPath)
 	if err != nil {
 		log.Fatal("cold cache init failed", zap.Error(err))
 	}
 
-	// ── Eviction bridge: hot → cold ──────────────────────────────────────────
-	// The onEvict callback is called inside the shard lock, so it must be
-	// non-blocking. We launch a goroutine per eviction; for production workloads
-	// a bounded worker pool (e.g., 4–8 workers draining a channel) is preferred
-	// to cap goroutine creation under eviction bursts.
 	evictOnHot := func(k cache.ChunkKey, data []byte) {
 		go func() {
 			if putErr := coldCache.Put(k, data); putErr != nil {
@@ -66,13 +53,10 @@ func main() {
 		}()
 	}
 
-	// ── Hot (RAM) LRU cache ──────────────────────────────────────────────────
 	hotCache := cache.NewHotCache(cfg.Cache.RAMCapacityBytes, evictOnHot)
 
-	// ── Prometheus metrics registry ──────────────────────────────────────────
 	reg := metrics.NewRegistry()
 
-	// ── Backend connection pool ──────────────────────────────────────────────
 	backend, err := proxy.NewBackend(proxy.BackendConfig{
 		Endpoint:        cfg.Backend.Endpoint,
 		Region:          cfg.Backend.Region,
@@ -85,7 +69,6 @@ func main() {
 		log.Fatal("backend init failed", zap.Error(err))
 	}
 
-	// ── Prefetch worker pool ─────────────────────────────────────────────────
 	prefetcher := engine.NewPrefetcher(engine.PrefetchConfig{
 		Workers:    cfg.Engine.PrefetchWorkers,
 		QueueDepth: cfg.Engine.PrefetchQueueDepth,
@@ -94,13 +77,11 @@ func main() {
 	prefetcher.Start()
 	defer prefetcher.Stop()
 
-	// ── Velocity tracker ─────────────────────────────────────────────────────
 	tracker := engine.NewVelocityTracker(engine.TrackerConfig{
 		StreakThreshold:               cfg.Engine.StreakThreshold,
 		VelocityThresholdChunksPerSec: cfg.Engine.VelocityThresholdChunksPerSec,
 	}, prefetcher, log)
 
-	// ── Proxy handler ────────────────────────────────────────────────────────
 	handler := proxy.NewHandler(proxy.HandlerConfig{
 		HotCache:  hotCache,
 		ColdCache: coldCache,
@@ -155,8 +136,6 @@ func main() {
 	}
 	log.Info("shutdown complete")
 }
-
-// ── Config types (YAML-mapped) ───────────────────────────────────────────────
 
 type appConfig struct {
 	Server  serverCfg  `yaml:"server"`

@@ -1,5 +1,3 @@
-// Package proxy contains the HTTP reverse proxy handler and the outbound
-// backend connection manager.
 package proxy
 
 import (
@@ -17,7 +15,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// HandlerConfig bundles all dependencies injected into the proxy handler.
 type HandlerConfig struct {
 	HotCache  *cache.HotCache
 	ColdCache *cache.ColdCache
@@ -28,27 +25,14 @@ type HandlerConfig struct {
 	Logger    *zap.Logger
 }
 
-// Handler implements http.Handler. It routes GET requests with a Range header
-// through the three-tier cache (RAM → NVMe → S3/Wasabi) and streams the
-// assembled response back to the client.
 type Handler struct {
 	cfg HandlerConfig
 }
 
-// NewHandler creates a Handler with the provided dependencies.
 func NewHandler(cfg HandlerConfig) *Handler {
 	return &Handler{cfg: cfg}
 }
 
-// ServeHTTP is the single request entrypoint.
-//
-// Request flow:
-//  1. Validate method and extract object key from the URL path.
-//  2. Parse the Range header with zero-allocation strconv arithmetic.
-//  3. Map [startByte, endByte] → [chunkStart, chunkEnd].
-//  4. Per-chunk: hot cache → cold cache (promote) → backend fetch → cache.
-//  5. Trim first/last chunk slices to the exact byte range and stream 206.
-//  6. Record the access in the velocity tracker to arm future prefetches.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -65,14 +49,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rangeHeader := r.Header.Get("Range")
 	if rangeHeader == "" {
-		// No Range header — forward the request to the backend unmodified.
 		h.proxyFull(w, r, objectKey)
 		return
 	}
 
 	startByte, endByte, ok := parseByteRange(rangeHeader)
 	if !ok || endByte < 0 {
-		// Malformed or open-ended range; fall back to a full object proxy.
 		h.proxyFull(w, r, objectKey)
 		return
 	}
@@ -114,7 +96,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			cacheTier = tier
 		}
 
-		// Compute the byte window of this chunk that overlaps [startByte, endByte].
 		chunkByteBase := int64(chunkIdx) * cache.ChunkSize
 		sliceStart := int64(0)
 		sliceEnd := int64(len(chunkData))
@@ -130,11 +111,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		n, writeErr := w.Write(chunkData[sliceStart:sliceEnd])
 		bytesServed += int64(n)
 		if writeErr != nil {
-			return // client disconnected; abandon silently
+			return
 		}
 
-		// Notify the velocity tracker after serving each chunk. The tracker
-		// may asynchronously schedule prefetch on the next few chunks.
 		h.cfg.Tracker.Record(objectKey, chunkIdx)
 	}
 
@@ -154,26 +133,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// resolveChunk returns chunk data from the first tier in which it is found.
-// The returned tier name is one of "hot", "cold", or "backend".
 func (h *Handler) resolveChunk(ctx context.Context, key cache.ChunkKey) ([]byte, string, error) {
-	// Tier 1: hot (RAM) cache — read under a per-shard read lock, O(1).
 	if data, ok := h.cfg.HotCache.Get(key); ok {
 		h.cfg.Metrics.CacheHitTotal.Inc()
 		return data, "hot", nil
 	}
 	h.cfg.Metrics.CacheMissTotal.Inc()
 
-	// Tier 2: cold (NVMe) cache — os.ReadFile, no copy needed since the
-	// returned slice is freshly heap-allocated and can be owned by HotCache.
 	if data, ok := h.cfg.ColdCache.Get(key); ok {
 		h.cfg.Metrics.ColdCacheHitTotal.Inc()
-		h.cfg.HotCache.Put(key, data) // promote to hot; data ownership transfers
+		h.cfg.HotCache.Put(key, data)
 		return data, "cold", nil
 	}
 
-	// Tier 3: backend fetch — uses the pool buffer to read from S3/Wasabi,
-	// then copies into a heap slice so the pool buffer is immediately returned.
 	buf := h.cfg.Pool.Get()
 	defer h.cfg.Pool.Put(buf)
 
@@ -188,8 +160,6 @@ func (h *Handler) resolveChunk(ctx context.Context, key cache.ChunkKey) ([]byte,
 	return owned, "backend", nil
 }
 
-// proxyFull forwards a full (non-range) GET to the backend and streams the
-// response body directly to the client without caching.
 func (h *Handler) proxyFull(w http.ResponseWriter, r *http.Request, objectKey string) {
 	body, contentType, err := h.cfg.Backend.GetObjectStream(r.Context(), objectKey)
 	if err != nil {
@@ -209,12 +179,6 @@ func (h *Handler) proxyFull(w http.ResponseWriter, r *http.Request, objectKey st
 	_, _ = io.Copy(w, body)
 }
 
-// parseByteRange parses the value portion of an HTTP Range header.
-// It handles the single-range form "bytes=start-end" only, using strconv
-// integer parsing instead of regexp or reflect to stay allocation-free.
-//
-// Returns ok=false for any unsupported or malformed range. An open-ended
-// range ("bytes=N-") returns end=-1 with ok=true; the caller must handle it.
 func parseByteRange(header string) (start, end int64, ok bool) {
 	const prefix = "bytes="
 	if len(header) <= len(prefix) || header[:len(prefix)] != prefix {
@@ -239,7 +203,7 @@ func parseByteRange(header string) (start, end int64, ok bool) {
 			return 0, 0, false
 		}
 	} else {
-		end = -1 // open-ended range
+		end = -1
 	}
 	return start, end, true
 }
