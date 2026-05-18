@@ -1,0 +1,66 @@
+# proxy.config.yaml — Production configuration for the predictive reverse proxy.
+# Sensitive credentials should be supplied via environment variables or a secrets
+# manager; the ${VAR} placeholders below are expanded at runtime by the loader.
+
+server:
+  # Port on which the proxy accepts inbound Range requests from the analytics engine.
+  port: 8080
+  # Separate port for Prometheus /metrics — never expose this publicly.
+  metrics_port: 9090
+  # read_timeout_sec covers the time to read the full request headers.
+  read_timeout_sec: 30
+  # write_timeout_sec must be long enough for a cold-path backend fetch of a
+  # multi-chunk response at the link speed of the slowest expected client.
+  write_timeout_sec: 300
+  idle_timeout_sec: 120
+
+cache:
+  # ram_capacity_bytes: total hot-cache budget across all 256 shards.
+  # 8 GiB holds ~2 048 × 4 MiB chunks — roughly 8 GB of working set.
+  ram_capacity_bytes: 8589934592   # 8 GiB
+
+  # disk_path: mount point of the local NVMe device dedicated to the cold cache.
+  # Use a tmpfs path for integration testing: /tmp/proxy-cold-cache
+  disk_path: /var/cache/predictive-proxy/cold
+
+backend:
+  # Wasabi endpoint. Leave empty to target real AWS S3 (endpoint auto-resolved).
+  endpoint: "https://s3.us-east-1.wasabisys.com"
+  region: "us-east-1"
+  # Credentials — inject via environment in production:
+  #   WASABI_ACCESS_KEY_ID and WASABI_SECRET_ACCESS_KEY
+  access_key_id: "${WASABI_ACCESS_KEY_ID}"
+  secret_access_key: "${WASABI_SECRET_ACCESS_KEY}"
+  bucket: "analytics-data"
+  # max_conns: upper bound on idle+active TCP connections to the backend host.
+  # Wasabi enforces a per-IP connection limit; tune to stay below it.
+  max_conns: 512
+
+engine:
+  # prefetch_workers: goroutines that drain the prefetch job channel.
+  # Rule of thumb: (expected_backend_latency_ms / chunk_fetch_ms) × desired_concurrency
+  prefetch_workers: 16
+
+  # prefetch_queue_depth: capacity of the bounded prefetch channel.
+  # At 16 workers × 8 look-ahead chunks, 512 gives ~4 queue-fills of headroom
+  # before backpressure kicks in.
+  prefetch_queue_depth: 512
+
+  # look_ahead_chunks: how many chunks ahead to speculatively fetch on a trigger.
+  # 8 × 4 MiB = 32 MiB of speculative read-ahead, covering ~262 ms at 1 Gbps.
+  look_ahead_chunks: 8
+
+  # streak_threshold: minimum consecutive sequential chunk reads before arming
+  # the prefetcher. 3 reads = one confirmed sequential pattern.
+  streak_threshold: 3
+
+  # velocity_threshold_chunks_per_sec: minimum EWMA read velocity to trigger
+  # prefetch. 0.5 ch/s = one 4 MiB chunk every 2 seconds; ignores idle queries.
+  velocity_threshold_chunks_per_sec: 0.5
+
+ebpf:
+  # enabled: set to false to disable eBPF kernel instrumentation.
+  # Required: Linux ≥ 5.10, CAP_BPF, CAP_NET_ADMIN.
+  enabled: true
+  # network_interface: the NIC to attach the TC egress program to.
+  network_interface: "eth0"

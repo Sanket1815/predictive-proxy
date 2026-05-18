@@ -1,0 +1,112 @@
+# docker-compose.yml — Local development stack (Docker Desktop for Windows/Mac compatible).
+#
+# Starts:
+#   • minio       — local S3-compatible object store (ports 9000, 9001 console)
+#   • minio-init  — one-shot job that creates the "analytics-data" bucket
+#   • proxy       — the predictive reverse proxy (port 8080, metrics 9090)
+#   • prometheus  — scrapes /metrics every 5 s (port 9091)
+#   • grafana     — dashboard UI (port 3000, login admin/admin)
+#
+# Usage:
+#   cd deployments
+#   docker compose up --build
+#
+#   Upload a test file:
+#     docker run --rm -e MC_HOST_local=http://minioadmin:minioadmin@localhost:9000 \
+#       minio/mc cp /etc/hostname local/analytics-data/test/hostname.txt
+#
+#   Send a range request to the proxy:
+#     curl -H "Range: bytes=0-4194303" http://localhost:8080/test/hostname.txt
+
+services:
+
+  # ── MinIO: local S3 replacement ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"    # S3 API
+      - "9001:9001"    # Web console → http://localhost:9001  (minioadmin / minioadmin)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── One-shot bucket creation ─────────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/analytics-data &&
+        echo 'bucket ready'
+      "
+
+  # ── Predictive proxy ─────────────────────────────────────────────────────────
+  proxy:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    ports:
+      - "8080:8080"   # proxy endpoint
+      - "9090:9090"   # metrics endpoint
+    volumes:
+      - ../configs/proxy.docker.yaml:/configs/proxy.config.yaml:ro
+    # tmpfs for the cold cache avoids named-volume permission issues with
+    # the non-root user (65534) in the scratch image.
+    tmpfs:
+      - /var/cache/predictive-proxy/cold:mode=0755,uid=65534,gid=65534
+    environment:
+      - WASABI_ACCESS_KEY_ID=minioadmin
+      - WASABI_SECRET_ACCESS_KEY=minioadmin
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9091:9090"   # Prometheus UI → http://localhost:9091
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    depends_on:
+      - proxy
+    restart: unless-stopped
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    ports:
+      - "3000:3000"   # Grafana UI → http://localhost:3000  (admin / admin)
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  prometheus_data:
+  grafana_data:

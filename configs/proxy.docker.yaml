@@ -1,0 +1,36 @@
+# proxy.docker.yaml — Docker Compose dev override.
+# Backend targets the local MinIO container instead of Wasabi.
+# Credentials are injected via environment variables in docker-compose.yml.
+
+server:
+  port: 8080
+  metrics_port: 9090
+  read_timeout_sec: 30
+  write_timeout_sec: 300
+  idle_timeout_sec: 120
+
+cache:
+  # 1 GiB hot cache: 1073741824 / 256 shards = 4 MiB per shard, exactly one
+  # 4 MiB chunk per shard. The 512 MiB default gave only 2 MiB/shard, causing
+  # every Put to go over-capacity since chunks are 4 MiB.
+  ram_capacity_bytes: 1073741824
+  disk_path: /var/cache/predictive-proxy/cold
+
+backend:
+  # "minio" resolves to the MinIO container via Docker's internal DNS.
+  endpoint: "http://minio:9000"
+  region: "us-east-1"
+  access_key_id: "${WASABI_ACCESS_KEY_ID}"
+  secret_access_key: "${WASABI_SECRET_ACCESS_KEY}"
+  bucket: "analytics-data"
+  max_conns: 64
+
+engine:
+  prefetch_workers: 4
+  prefetch_queue_depth: 64
+  look_ahead_chunks: 4
+  # streak_threshold: 2 consecutive sequential chunks trigger prefetch.
+  streak_threshold: 2
+  # 0.05 ch/s = one chunk every 20 seconds — permits manual curl testing.
+  # Raise to 0.5–2.0 for production to filter out slow interactive queries.
+  velocity_threshold_chunks_per_sec: 0.05

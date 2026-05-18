@@ -1,0 +1,12 @@
+{
+  "configurations": [
+    {
+      "name": "BPF",
+      "includePath": [],
+      "defines": ["__TARGET_ARCH_x86"],
+      "intelliSenseMode": "linux-clang-x64",
+      "browse": { "limitSymbolsToIncludedHeaders": false }
+    }
+  ],
+  "version": 4
+}

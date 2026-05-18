@@ -1,0 +1,219 @@
+{
+  "title": "Predictive Proxy",
+  "uid": "predictive-proxy",
+  "version": 1,
+  "schemaVersion": 38,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Hot Cache Hits",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_cache_hot_hits_total", "legendFormat": "hits" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Hot Cache Misses",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "orange", "mode": "fixed" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_cache_hot_misses_total", "legendFormat": "misses" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Cold Cache Hits",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "blue", "mode": "fixed" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_cache_cold_hits_total", "legendFormat": "cold hits" }]
+    },
+    {
+      "id": 4,
+      "type": "gauge",
+      "title": "Cache Hit Rate",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "minVizWidth": 75 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "proxy_cache_hot_hits_total / (proxy_cache_hot_hits_total + proxy_cache_hot_misses_total)",
+        "legendFormat": "hit rate"
+      }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Bytes Served",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_bytes_served_total", "legendFormat": "bytes" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Total Requests",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "text", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "sum(proxy_requests_total)", "legendFormat": "requests" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Cache Hits vs Misses (rate)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "hot hits" },  "properties": [{ "id": "color", "value": { "fixedColor": "green",  "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "hot misses" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "cold hits" },  "properties": [{ "id": "color", "value": { "fixedColor": "blue",   "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rate(proxy_cache_hot_hits_total[1m])",   "legendFormat": "hot hits" },
+        { "datasource": "Prometheus", "expr": "rate(proxy_cache_hot_misses_total[1m])", "legendFormat": "hot misses" },
+        { "datasource": "Prometheus", "expr": "rate(proxy_cache_cold_hits_total[1m])",  "legendFormat": "cold hits" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Prefetch Activity",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "enqueued" },  "properties": [{ "id": "color", "value": { "fixedColor": "blue",   "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "completed" }, "properties": [{ "id": "color", "value": { "fixedColor": "green",  "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "dropped" },   "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "errors" },    "properties": [{ "id": "color", "value": { "fixedColor": "red",    "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "rate(proxy_prefetch_enqueued_total[1m])",   "legendFormat": "enqueued" },
+        { "datasource": "Prometheus", "expr": "rate(proxy_prefetch_completed_total[1m])",  "legendFormat": "completed" },
+        { "datasource": "Prometheus", "expr": "rate(proxy_prefetch_dropped_total[1m])",    "legendFormat": "dropped" },
+        { "datasource": "Prometheus", "expr": "rate(proxy_prefetch_errors_total[1m])",     "legendFormat": "errors" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Request Latency Percentiles",
+      "gridPos": { "x": 0, "y": 12, "w": 16, "h": 8 },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2 } }
+      },
+      "targets": [
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.50, sum by(le, cache_tier) (rate(proxy_request_duration_seconds_bucket[1m])))", "legendFormat": "p50 {{cache_tier}}" },
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.95, sum by(le, cache_tier) (rate(proxy_request_duration_seconds_bucket[1m])))", "legendFormat": "p95 {{cache_tier}}" },
+        { "datasource": "Prometheus", "expr": "histogram_quantile(0.99, sum by(le, cache_tier) (rate(proxy_request_duration_seconds_bucket[1m])))", "legendFormat": "p99 {{cache_tier}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "gauge",
+      "title": "Prefetch Queue Length",
+      "gridPos": { "x": 16, "y": 12, "w": 4, "h": 8 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "min": 0, "max": 64,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 32 },
+              { "color": "red",    "value": 56 }
+            ]
+          }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_prefetch_queue_length", "legendFormat": "queue depth" }]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Prefetch Completed",
+      "gridPos": { "x": 20, "y": 12, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_prefetch_completed_total", "legendFormat": "completed" }]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Prefetch Enqueued",
+      "gridPos": { "x": 20, "y": 16, "w": 4, "h": 4 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "blue", "mode": "fixed" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "targets": [{ "datasource": "Prometheus", "expr": "proxy_prefetch_enqueued_total", "legendFormat": "enqueued" }]
+    }
+  ]
+}
