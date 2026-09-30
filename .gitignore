@@ -27,3 +27,7 @@ Thumbs.db
 # Local config overrides with real credentials — never commit these
 configs/proxy.local.yaml
 .env
+
+# benchmark output and local cold cache
+bench-results/
+.bench-cache/

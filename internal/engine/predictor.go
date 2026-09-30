@@ -52,6 +52,13 @@ func (t *VelocityTracker) Record(objectKey string, chunkIndex uint64) {
 		return
 	}
 
+	// Several reads inside one chunk (video segments, PDF pages) are neither
+	// progress nor a break in the pattern; don't let them reset the streak.
+	if chunkIndex == st.lastChunkIndex {
+		t.mu.Unlock()
+		return
+	}
+
 	isSequential := chunkIndex == st.lastChunkIndex+1
 	elapsed := now.Sub(st.lastReadAt).Seconds()
 

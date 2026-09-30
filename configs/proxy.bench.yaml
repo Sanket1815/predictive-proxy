@@ -1,0 +1,37 @@
+# proxy.bench.yaml — configuration for `go run ./cmd/bench run` on a dev machine.
+# No credentials here: with access keys empty the backend uses the AWS SDK
+# default chain (AWS_PROFILE, ~/.aws/credentials, SSO, instance role).
+
+server:
+  port: 8080
+  metrics_port: 9090
+  admin_port: 8081
+  read_timeout_sec: 30
+  write_timeout_sec: 300
+  idle_timeout_sec: 120
+
+cache:
+  # Deliberately smaller than the ~5.8 GB portal dataset so the benchmark
+  # exercises all three tiers: RAM (hot), local disk (cold) and S3.
+  ram_capacity_bytes: 2147483648 # 2 GiB
+  # Delete this directory before a proxy-cold phase for a true cold start.
+  disk_path: .bench-cache/cold
+
+backend:
+  endpoint: ""
+  region: "us-east-2"
+  access_key_id: ""
+  secret_access_key: ""
+  bucket: "predictive-proxy"
+  max_conns: 256
+
+engine:
+  prefetch_workers: 16
+  prefetch_queue_depth: 512
+  look_ahead_chunks: 8
+  streak_threshold: 3
+  # Velocity is measured between chunk reads, so it includes the S3 fetch time
+  # itself. Over a slow link (~1–3 s per 4 MiB chunk) 0.5 ch/s is never reached
+  # and prefetch never arms — exactly when it is needed most. 0.1 ch/s still
+  # ignores idle/abandoned streams.
+  velocity_threshold_chunks_per_sec: 0.1

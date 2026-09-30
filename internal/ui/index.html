@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>go-predictive-proxy · Dashboard</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2e3149;
+  --text: #e2e8f0;
+  --muted: #8892a4;
+  --accent: #6366f1;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --blue: #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+header h1 { font-size: 17px; font-weight: 700; font-family: monospace; color: var(--accent); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.off { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.pill { font-size: 11px; padding: 2px 9px; border-radius: 12px; background: rgba(99,102,241,0.15); color: var(--accent); font-family: monospace; }
+#last-tick { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+main { max-width: 1120px; margin: 28px auto; padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media(max-width:760px){ main { grid-template-columns: 1fr; } }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.card.wide { grid-column: 1 / -1; }
+
+.ch { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.ch h2 { font-size: 15px; font-weight: 600; }
+.ch .sub { margin-left: auto; font-size: 11px; color: var(--muted); }
+.num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+table.cfg { width: 100%; border-collapse: collapse; }
+table.cfg tr { border-bottom: 1px solid var(--border); }
+table.cfg tr:last-child { border-bottom: none; }
+table.cfg td { padding: 9px 0; font-size: 13px; }
+table.cfg td:first-child { color: var(--muted); width: 150px; font-family: monospace; font-size: 12px; }
+table.cfg td:last-child { font-family: monospace; word-break: break-all; }
+
+.fg { margin-bottom: 14px; }
+.fg label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-family: monospace; }
+.frow { display: flex; gap: 10px; }
+.frow .fg { flex: 1; }
+
+input[type=text], input[type=number] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px;
+  font-family: monospace; outline: none; transition: border-color .15s;
+}
+input:focus { border-color: var(--accent); }
+
+.cbrow { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.cbrow input { width: auto; }
+
+button {
+  width: 100%; margin-top: 4px; background: var(--accent); color: #fff;
+  border: none; padding: 9px 20px; border-radius: 6px; font-size: 13px;
+  font-weight: 600; cursor: pointer; transition: opacity .15s;
+}
+button:hover { opacity: .85; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+
+.rbox { display: none; margin-top: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 12px; font-family: monospace; }
+.rbox.on { display: block; }
+.rr { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.rr:last-child { border-bottom: none; }
+.rk { color: var(--muted); }
+.rv { font-weight: 700; }
+.rv.g { color: var(--green); } .rv.y { color: var(--yellow); } .rv.r { color: var(--red); } .rv.b { color: var(--blue); }
+
+.msec { margin-bottom: 22px; }
+.msec-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+.mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.mtile { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.mtile .ml { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-family: monospace; }
+.mtile .mv { font-size: 22px; font-weight: 700; font-family: monospace; }
+.mv.g { color: var(--green); } .mv.y { color: var(--yellow); } .mv.b { color: var(--blue); }
+
+.lbars { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.lrow { display: flex; align-items: center; gap: 12px; }
+.llabel { width: 75px; font-size: 12px; font-family: monospace; color: var(--muted); flex-shrink: 0; }
+.ltrack { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; height: 22px; overflow: hidden; }
+.lbar { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; transition: width .4s ease; }
+.lval { width: 75px; text-align: right; font-size: 13px; font-weight: 700; font-family: monospace; }
+
+.err { color: var(--red); font-size: 12px; font-family: monospace; margin-top: 10px; min-height: 16px; }
+.spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="dot"></div>
+  <h1>go-predictive-proxy</h1>
+  <span class="pill" id="port-pill">connecting…</span>
+  <span id="last-tick"></span>
+</header>
+
+<main>
+
+  <!-- Step 1 — Configuration -->
+  <div class="card">
+    <div class="ch"><div class="num">1</div><h2>Configuration</h2></div>
+    <table class="cfg" id="cfg-table"><tr><td colspan="2" style="color:var(--muted);font-size:13px">Loading…</td></tr></table>
+  </div>
+
+  <!-- Step 2 — Fetch File -->
+  <div class="card">
+    <div class="ch"><div class="num">2</div><h2>Fetch File</h2></div>
+    <div class="fg">
+      <label>Object Key</label>
+      <input type="text" id="obj-key" placeholder="path/to/your-file.parquet">
+    </div>
+    <label class="cbrow">
+      <input type="checkbox" id="use-range" onchange="toggleRange()">
+      Send Range header (chunk request)
+    </label>
+    <div id="range-fields" style="display:none">
+      <div class="frow">
+        <div class="fg"><label>Range Start (bytes)</label><input type="number" id="range-start" value="0"></div>
+        <div class="fg"><label>Range End (bytes)</label><input type="number" id="range-end" value="4194303"></div>
+      </div>
+    </div>
+    <button id="fetch-btn" onclick="doFetch()">Fetch</button>
+    <div class="rbox" id="fetch-result"></div>
+    <div class="err" id="fetch-err"></div>
+  </div>
+
+  <!-- Step 3 — Live Metrics -->
+  <div class="card wide">
+    <div class="ch">
+      <div class="num">3</div>
+      <h2>Live Metrics</h2>
+      <span class="sub pill">auto-refresh 2 s</span>
+    </div>
+    <div id="metrics-wrap"><div style="color:var(--muted);font-size:13px">Loading…</div></div>
+  </div>
+
+  <!-- Step 4 — Latency Test -->
+  <div class="card wide">
+    <div class="ch"><div class="num">4</div><h2>Latency Test</h2></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px">
+      Fetches the same chunk twice back-to-back. The first call is a cold-path fetch from S3/Wasabi; the second should be served directly from the RAM cache — showing the full speedup.
+    </p>
+    <div class="frow">
+      <div class="fg"><label>Object Key</label><input type="text" id="lat-key" placeholder="path/to/your-file.parquet"></div>
+      <div class="fg"><label>Range Start (bytes)</label><input type="number" id="lat-start" value="0"></div>
+      <div class="fg"><label>Range End (bytes)</label><input type="number" id="lat-end" value="4194303"></div>
+    </div>
+    <button id="lat-btn" onclick="runLatencyTest()">Run Latency Test</button>
+    <div id="lat-result"></div>
+    <div class="err" id="lat-err"></div>
+  </div>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+
+function fmt(n) {
+  if (n === undefined || n === null) return '—';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+// ── Step 1: Configuration ────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const c = await api('/api/config');
+    $('port-pill').textContent = `proxy :${c.proxy_port}`;
+    $('cfg-table').innerHTML = [
+      ['proxy_port', c.proxy_port],
+      ['endpoint',   c.endpoint || '(empty — native AWS S3)'],
+      ['region',     c.region],
+      ['bucket',     c.bucket],
+    ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+    $('dot').className = 'dot';
+  } catch {
+    $('dot').className = 'dot off';
+    $('cfg-table').innerHTML = '<tr><td colspan="2" style="color:var(--red);font-size:13px">Could not reach admin server</td></tr>';
+  }
+}
+
+// ── Step 3: Live metrics ─────────────────────────────────────────────────────
+async function refreshMetrics() {
+  try {
+    const m = await api('/api/metrics');
+
+    const hits   = m['proxy_cache_hot_hits_total']  || 0;
+    const misses = m['proxy_cache_hot_misses_total'] || 0;
+    const ratio  = hits + misses > 0 ? ((hits / (hits + misses)) * 100).toFixed(1) + '%' : '—';
+
+    const reqTotal = Object.keys(m)
+      .filter(k => k.startsWith('proxy_requests_total'))
+      .reduce((s, k) => s + (m[k] || 0), 0);
+
+    const latCount = Object.keys(m)
+      .filter(k => k.includes('proxy_request_duration_seconds') && k.endsWith('#count'))
+      .reduce((s, k) => s + (m[k] || 0), 0);
+    const latSum = Object.keys(m)
+      .filter(k => k.includes('proxy_request_duration_seconds') && k.endsWith('#sum'))
+      .reduce((s, k) => s + (m[k] || 0), 0);
+    const avgLat = latCount > 0 ? (latSum / latCount * 1000).toFixed(1) + ' ms' : '—';
+
+    const dropped = m['proxy_prefetch_dropped_total'] || 0;
+    const errors  = m['proxy_prefetch_errors_total']  || 0;
+
+    const sections = [
+      { title: 'Cache', tiles: [
+        { label: 'hot hits',     val: fmt(hits),   cls: 'g' },
+        { label: 'hot misses',   val: fmt(misses), cls: '' },
+        { label: 'hit ratio',    val: ratio,       cls: 'g' },
+        { label: 'cold hits',    val: fmt(m['proxy_cache_cold_hits_total']), cls: 'g' },
+      ]},
+      { title: 'Prefetch', tiles: [
+        { label: 'enqueued',     val: fmt(m['proxy_prefetch_enqueued_total']),   cls: '' },
+        { label: 'completed',    val: fmt(m['proxy_prefetch_completed_total']),  cls: 'g' },
+        { label: 'dropped',      val: fmt(dropped),  cls: dropped > 0 ? 'y' : '' },
+        { label: 'errors',       val: fmt(errors),   cls: errors  > 0 ? 'y' : '' },
+        { label: 'queue length', val: fmt(m['proxy_prefetch_queue_length']), cls: '' },
+      ]},
+      { title: 'Requests', tiles: [
+        { label: 'total',        val: fmt(reqTotal), cls: '' },
+        { label: 'bytes served', val: fmt(m['proxy_bytes_served_total']), cls: '' },
+        { label: 'avg latency',  val: avgLat, cls: 'b' },
+      ]},
+    ];
+
+    $('metrics-wrap').innerHTML = sections.map(s => `
+      <div class="msec">
+        <div class="msec-title">${s.title}</div>
+        <div class="mgrid">${s.tiles.map(t =>
+          `<div class="mtile"><div class="ml">${t.label}</div><div class="mv ${t.cls}">${t.val}</div></div>`
+        ).join('')}</div>
+      </div>`).join('');
+
+    $('last-tick').textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    $('metrics-wrap').innerHTML = `<div style="color:var(--red);font-size:13px">Failed: ${e.message}</div>`;
+  }
+}
+
+// ── Step 2: Fetch file ───────────────────────────────────────────────────────
+function toggleRange() {
+  $('range-fields').style.display = $('use-range').checked ? '' : 'none';
+}
+
+async function doFetch() {
+  const key = $('obj-key').value.trim();
+  if (!key) { $('fetch-err').textContent = 'Enter an object key.'; return; }
+
+  const btn = $('fetch-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Fetching…';
+  $('fetch-err').textContent = '';
+  $('fetch-result').classList.remove('on');
+
+  try {
+    const res = await api('/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        object_key:  key,
+        use_range:   $('use-range').checked,
+        range_start: parseInt($('range-start').value) || 0,
+        range_end:   parseInt($('range-end').value)   || 0,
+      }),
+    });
+
+    if (res.error) {
+      $('fetch-err').textContent = res.error;
+    } else {
+      const tier    = res.cache_tier || '—';
+      const tierCls = tier.includes('hot') ? 'g' : tier.includes('cold') ? 'y' : 'b';
+      const okCls   = res.status_code === 200 || res.status_code === 206 ? 'g' : 'r';
+      $('fetch-result').innerHTML = `
+        <div class="rr"><span class="rk">HTTP status</span><span class="rv ${okCls}">${res.status_code}</span></div>
+        <div class="rr"><span class="rk">cache tier</span><span class="rv ${tierCls}">${tier}</span></div>
+        <div class="rr"><span class="rk">latency</span><span class="rv">${res.latency_ms.toFixed(2)} ms</span></div>
+        <div class="rr"><span class="rk">bytes received</span><span class="rv">${fmt(res.bytes)}</span></div>`;
+      $('fetch-result').classList.add('on');
+      refreshMetrics();
+    }
+  } catch (e) {
+    $('fetch-err').textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fetch';
+  }
+}
+
+// ── Step 4: Latency test ─────────────────────────────────────────────────────
+async function runLatencyTest() {
+  const key = $('lat-key').value.trim();
+  if (!key) { $('lat-err').textContent = 'Enter an object key.'; return; }
+
+  const btn = $('lat-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Running…';
+  $('lat-err').textContent = '';
+  $('lat-result').innerHTML = '';
+
+  const body = JSON.stringify({
+    object_key:  key,
+    use_range:   true,
+    range_start: parseInt($('lat-start').value) || 0,
+    range_end:   parseInt($('lat-end').value)   || 4194303,
+  });
+  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body };
+
+  try {
+    const r1 = await api('/api/fetch', opts);
+    const r2 = await api('/api/fetch', opts);
+
+    if (r1.error || r2.error) {
+      $('lat-err').textContent = r1.error || r2.error;
+      return;
+    }
+
+    const max     = Math.max(r1.latency_ms, r2.latency_ms) || 1;
+    const speedup = r1.latency_ms > 0 ? (r1.latency_ms / Math.max(r2.latency_ms, 0.01)).toFixed(1) : '—';
+
+    const color = t => t.includes('hot') ? '#22c55e' : t.includes('cold') ? '#eab308' : '#3b82f6';
+    const bar   = (r, label) => `
+      <div class="lrow">
+        <div class="llabel">${label}</div>
+        <div class="ltrack">
+          <div class="lbar" style="width:${(r.latency_ms / max * 100).toFixed(1)}%;background:${color(r.cache_tier)}">
+            ${r.cache_tier}
+          </div>
+        </div>
+        <div class="lval" style="color:${color(r.cache_tier)}">${r.latency_ms.toFixed(1)} ms</div>
+      </div>`;
+
+    $('lat-result').innerHTML = `
+      <div class="lbars">${bar(r1, '1st fetch')}${bar(r2, '2nd fetch')}</div>
+      <div style="margin-top:14px;font-size:13px;color:var(--muted)">
+        Speedup: <strong style="color:var(--green)">${speedup}×</strong> faster on second fetch
+      </div>`;
+
+    refreshMetrics();
+  } catch (e) {
+    $('lat-err').textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Latency Test';
+  }
+}
+
+loadConfig();
+refreshMetrics();
+setInterval(refreshMetrics, 2000);
+</script>
+</body>
+</html>

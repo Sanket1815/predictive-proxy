@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 type Registry struct {
@@ -72,7 +73,8 @@ func NewRegistry() *Registry {
 		RequestLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "proxy_request_duration_seconds",
 			Help:    "End-to-end request latency, bucketed by cache tier.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14),
+			// 50µs … ~6.5s: resolves sub-millisecond hot hits as well as slow S3 tails.
+			Buckets: prometheus.ExponentialBuckets(0.00005, 2, 18),
 		}, []string{"cache_tier"}),
 		reg: reg,
 	}
@@ -96,4 +98,38 @@ func NewRegistry() *Registry {
 
 func (r *Registry) Handler() http.Handler {
 	return promhttp.HandlerFor(r.reg, promhttp.HandlerOpts{Registry: r.reg})
+}
+
+func (r *Registry) Snapshot() map[string]float64 {
+	mfs, err := r.reg.Gather()
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]float64)
+	for _, mf := range mfs {
+		name := mf.GetName()
+		for _, m := range mf.GetMetric() {
+			key := name
+			if lbls := m.GetLabel(); len(lbls) > 0 {
+				parts := ""
+				for _, lp := range lbls {
+					if parts != "" {
+						parts += ","
+					}
+					parts += lp.GetValue()
+				}
+				key += "{" + parts + "}"
+			}
+			switch mf.GetType() {
+			case dto.MetricType_COUNTER:
+				result[key] = m.GetCounter().GetValue()
+			case dto.MetricType_GAUGE:
+				result[key] = m.GetGauge().GetValue()
+			case dto.MetricType_HISTOGRAM:
+				result[key+"#count"] = float64(m.GetHistogram().GetSampleCount())
+				result[key+"#sum"] = m.GetHistogram().GetSampleSum()
+			}
+		}
+	}
+	return result
 }

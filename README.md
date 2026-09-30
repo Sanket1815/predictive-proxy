@@ -1,6 +1,8 @@
 # go-predictive-proxy
 
-A production-grade, predictive reverse proxy written in Go. It sits between an analytics engine issuing HTTP Range Requests and a Wasabi/S3 object store, using a dynamic chunk-based hot/cold caching algorithm and a velocity-driven prefetch engine to eliminate read amplification and tail latency.
+A production-grade, predictive reverse proxy written in Go. It sits between an analytics engine issuing HTTP Range Requests and an S3-compatible object store — **AWS S3** or **Wasabi** — using a dynamic chunk-based hot/cold caching algorithm and a velocity-driven prefetch engine to eliminate read amplification and tail latency.
+
+Both AWS S3 and Wasabi are supported out of the box via the AWS SDK v2. Use the `backend.endpoint` config key to switch between them: leave it empty for native AWS S3, or set it to the Wasabi regional endpoint (e.g. `https://s3.wasabisys.com`) for Wasabi. Path-style addressing is enabled automatically when an endpoint override is present, as required by Wasabi and MinIO.
 
 ---
 
@@ -96,11 +98,20 @@ cd go-predictive-proxy
 go mod tidy
 
 # 2. Set credentials
+#    For AWS S3:
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+#    For Wasabi:
 export WASABI_ACCESS_KEY_ID=...
 export WASABI_SECRET_ACCESS_KEY=...
 
-# 3. Edit configs/proxy.config.yaml — set disk_path to a writable directory
-#    and ebpf.enabled: false on non-Linux dev machines.
+# 3. Edit configs/proxy.config.yaml:
+#    - Set backend.access_key_id / backend.secret_access_key to the env var names above.
+#    - Leave backend.endpoint empty for AWS S3, or set it to the Wasabi regional
+#      endpoint (e.g. https://s3.wasabisys.com) for Wasabi.
+#    - Set disk_path to a writable directory.
+#    - Set ebpf.enabled: false on non-Linux dev machines.
 
 # 4. Build and run
 go build -o proxy ./cmd/proxy
@@ -111,6 +122,11 @@ go build -o proxy ./cmd/proxy
 
 ```bash
 cd go-predictive-proxy
+
+# AWS S3
+AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... docker compose -f deployments/docker-compose.yml up --build
+
+# Wasabi
 WASABI_ACCESS_KEY_ID=... WASABI_SECRET_ACCESS_KEY=... docker compose -f deployments/docker-compose.yml up --build
 ```
 
@@ -138,7 +154,7 @@ This requires `bpf2go`, `clang`, and `llvm-strip` on `$PATH`.
 | `server.metrics_port` | `9090` | Prometheus /metrics port |
 | `cache.ram_capacity_bytes` | `8589934592` | Total hot-cache RAM budget (8 GiB) |
 | `cache.disk_path` | `/var/cache/…/cold` | NVMe mount point for cold cache |
-| `backend.endpoint` | Wasabi US-East-1 | Override for MinIO or AWS S3 |
+| `backend.endpoint` | _(empty = AWS S3)_ | Leave empty for native AWS S3; set to Wasabi regional URL (e.g. `https://s3.wasabisys.com`) for Wasabi or MinIO |
 | `backend.max_conns` | `512` | TCP connection pool size |
 | `engine.prefetch_workers` | `16` | Background fetch goroutines |
 | `engine.look_ahead_chunks` | `8` | Chunks prefetched per trigger (32 MiB) |
@@ -176,9 +192,7 @@ one 4 MiB backend fetch and one hot-cache slot. If `proxy_prefetch_completed_tot
 is high but the downstream hit ratio is not improving, reduce `look_ahead_chunks`
 — you are fetching chunks that expire from the LRU before the client reaches them.
 
-**Backend connection pool.** Set `max_conns` to the Wasabi per-IP connection
-limit for your account tier. Exceeding it causes connection resets; under-sizing
-it serialises concurrent prefetch workers.
+**Backend connection pool.** Set `max_conns` to match the per-IP connection limit of your backend. For AWS S3 this is generally not a hard limit, but keeping it at 200–512 avoids overwhelming the SDK connection manager. For Wasabi, check your account tier's per-IP limit — exceeding it causes connection resets. Under-sizing serialises concurrent prefetch workers regardless of backend.
 
 **eBPF RTT feedback.** When `IsSlow()` returns true for the backend IP (RTT > 50 ms),
 consider wiring the prefetcher to increase `LookAhead` dynamically to compensate

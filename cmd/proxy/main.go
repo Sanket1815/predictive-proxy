@@ -14,6 +14,7 @@ import (
 	"github.com/nadsanket7/go-predictive-proxy/internal/engine"
 	"github.com/nadsanket7/go-predictive-proxy/internal/metrics"
 	"github.com/nadsanket7/go-predictive-proxy/internal/proxy"
+	"github.com/nadsanket7/go-predictive-proxy/internal/ui"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -106,6 +107,25 @@ func main() {
 		ReadTimeout: 5 * time.Second,
 	}
 
+	adminSrv := &http.Server{
+		Addr: fmt.Sprintf(":%d", cfg.Server.AdminPort),
+		Handler: ui.NewHandler(ui.Config{
+			ProxyPort: cfg.Server.Port,
+			Endpoint:  cfg.Backend.Endpoint,
+			Region:    cfg.Backend.Region,
+			Bucket:    cfg.Backend.Bucket,
+		}, reg, log),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
+
+	go func() {
+		log.Info("admin UI started", zap.Int("port", cfg.Server.AdminPort))
+		if serveErr := adminSrv.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
+			log.Fatal("admin server error", zap.Error(serveErr))
+		}
+	}()
+
 	go func() {
 		log.Info("metrics server started", zap.Int("port", cfg.Server.MetricsPort))
 		if serveErr := metricsSrv.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
@@ -134,6 +154,9 @@ func main() {
 	if shutErr := metricsSrv.Shutdown(ctx); shutErr != nil {
 		log.Error("metrics server shutdown error", zap.Error(shutErr))
 	}
+	if shutErr := adminSrv.Shutdown(ctx); shutErr != nil {
+		log.Error("admin server shutdown error", zap.Error(shutErr))
+	}
 	log.Info("shutdown complete")
 }
 
@@ -147,6 +170,7 @@ type appConfig struct {
 type serverCfg struct {
 	Port            int `yaml:"port"`
 	MetricsPort     int `yaml:"metrics_port"`
+	AdminPort       int `yaml:"admin_port"`
 	ReadTimeoutSec  int `yaml:"read_timeout_sec"`
 	WriteTimeoutSec int `yaml:"write_timeout_sec"`
 	IdleTimeoutSec  int `yaml:"idle_timeout_sec"`

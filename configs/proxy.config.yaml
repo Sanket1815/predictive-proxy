@@ -7,6 +7,8 @@ server:
   port: 8080
   # Separate port for Prometheus /metrics — never expose this publicly.
   metrics_port: 9090
+  # Admin UI port — open http://localhost:8081 in a browser to access the dashboard.
+  admin_port: 8081
   # read_timeout_sec covers the time to read the full request headers.
   read_timeout_sec: 30
   # write_timeout_sec must be long enough for a cold-path backend fetch of a
@@ -17,7 +19,7 @@ server:
 cache:
   # ram_capacity_bytes: total hot-cache budget across all 256 shards.
   # 8 GiB holds ~2 048 × 4 MiB chunks — roughly 8 GB of working set.
-  ram_capacity_bytes: 8589934592   # 8 GiB
+  ram_capacity_bytes: 8589934592 # 8 GiB
 
   # disk_path: mount point of the local NVMe device dedicated to the cold cache.
   # Use a tmpfs path for integration testing: /tmp/proxy-cold-cache
@@ -25,13 +27,13 @@ cache:
 
 backend:
   # Wasabi endpoint. Leave empty to target real AWS S3 (endpoint auto-resolved).
-  endpoint: "https://s3.us-east-1.wasabisys.com"
-  region: "us-east-1"
+  endpoint: "https://s3.us-east-2.amazonaws.com"
+  region: "us-east-2"
   # Credentials — inject via environment in production:
   #   WASABI_ACCESS_KEY_ID and WASABI_SECRET_ACCESS_KEY
-  access_key_id: "${WASABI_ACCESS_KEY_ID}"
-  secret_access_key: "${WASABI_SECRET_ACCESS_KEY}"
-  bucket: "analytics-data"
+  access_key_id: "${AWS_ACCESS_KEY_ID}"
+  secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  bucket: "predictive-proxy"
   # max_conns: upper bound on idle+active TCP connections to the backend host.
   # Wasabi enforces a per-IP connection limit; tune to stay below it.
   max_conns: 512
